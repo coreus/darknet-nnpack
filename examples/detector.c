@@ -562,6 +562,132 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
     }
 }
 
+void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh, char *outfile, int fullscreen)
+{
+    char str[256];
+    int listen_fd, comm_fd;
+
+    struct sockaddr_in servaddr;
+
+    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    bzero( &servaddr, sizeof(servaddr));
+
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+    servaddr.sin_port = htons(22666);
+
+    bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+    listen(listen_fd, 256);
+
+    comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
+    
+    list *options = read_data_cfg(datacfg);
+    char *name_list = option_find_str(options, "names", "data/names.list");
+    char **names = get_labels(name_list);
+
+    image **alphabet = load_alphabet();
+    network *net = load_network(cfgfile, weightfile, 0);
+    set_batch_network(net, 1);
+    srand(2222222);
+	struct timeval start, stop;
+    char buff[256];
+    char *input = buff;
+    int j;
+    float nms=.3;
+#ifdef NNPACK
+	nnp_initialize();
+	net->threadpool = pthreadpool_create(4);
+#endif
+
+
+    while(1)
+    {
+
+        char result[4096] = {0};
+        bzero( str, 256);
+        read(comm_fd,str,256);
+
+        if(strcmp(str,"exit") == 0){
+        break;
+        }
+
+        filename = str;
+        strncpy(input, filename, 256);
+        
+#ifdef NNPACK
+        image im = load_image_thread(input, 0, 0, net->c, net->threadpool);
+        image sized = letterbox_image_thread(im, net->w, net->h, net->threadpool);
+#else
+        image im = load_image_color(input,0,0);
+        image sized = letterbox_image(im, net->w, net->h);
+        //image sized = resize_image(im, net->w, net->h);
+        //image sized2 = resize_max(im, net->w);
+        //image sized = crop_image(sized2, -((net->w - sized2.w)/2), -((net->h - sized2.h)/2), net->w, net->h);
+        //resize_network(net, sized.w, sized.h);
+#endif
+        layer l = net->layers[net->n-1];
+
+        box *boxes = calloc(l.w*l.h*l.n, sizeof(box));
+        float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
+        for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(l.classes + 1, sizeof(float *));
+        float **masks = 0;
+        if (l.coords > 4){
+            masks = calloc(l.w*l.h*l.n, sizeof(float*));
+            for(j = 0; j < l.w*l.h*l.n; ++j) masks[j] = calloc(l.coords-4, sizeof(float *));
+        }
+
+        float *X = sized.data;
+        gettimeofday(&start, 0);
+        network_predict(net, X);
+        gettimeofday(&stop, 0);
+        printf("%s: Predicted in %ld ms.\n", input, (stop.tv_sec * 1000 + stop.tv_usec / 1000) - (start.tv_sec * 1000 + start.tv_usec / 1000));
+        get_region_boxes(l, im.w, im.h, net->w, net->h, thresh, probs, boxes, masks, 0, 0, hier_thresh, 1);
+        //if (nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
+        if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);
+
+
+        for(int i = 0; i <  l.w*l.h*l.n; ++i){
+            char labelstr[4096] = {0};
+            int class = -1;
+            for(int j = 0; j < l.classes; ++j){
+                if (probs[i][j] > thresh){
+                    if (class < 0) {
+                        strcat(labelstr, names[j]);
+                        class = j;
+                    } else {
+                        strcat(labelstr, ", ");
+                        strcat(labelstr, names[j]);
+                    }
+                }
+            }
+            if(class >= 0){
+                box b = boxes[i];
+
+                int left  = (b.x-b.w/2.)*im.w;
+                int right = (b.x+b.w/2.)*im.w;
+                int top   = (b.y-b.h/2.)*im.h;
+                int bot   = (b.y+b.h/2.)*im.h;
+                
+                char tmp[1000] = {0};
+                sprintf(tmp,"%s,%i,%i,%i,%i\n",labelstr,top,left,bot,right);
+                strcat(result,tmp);
+            }
+        }
+
+        free_image(im);
+        free_image(sized);
+        free(boxes);
+        free_ptrs((void **)probs, l.w*l.h*l.n);
+        
+        write(comm_fd, result, strlen(result)+1);
+    }
+#ifdef NNPACK
+	pthreadpool_destroy(net->threadpool);
+	nnp_deinitialize();
+#endif
+}
+
 void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh, char *outfile, int fullscreen)
 {
     list *options = read_data_cfg(datacfg);
@@ -591,12 +717,12 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
             input = fgets(input, 256, stdin);
             if(!input) return;
             strtok(input, "\n");
-		}
+        }
 #ifdef NNPACK
-		image im = load_image_thread(input, 0, 0, net->c, net->threadpool);
-		image sized = letterbox_image_thread(im, net->w, net->h, net->threadpool);
+        image im = load_image_thread(input, 0, 0, net->c, net->threadpool);
+        image sized = letterbox_image_thread(im, net->w, net->h, net->threadpool);
 #else
-		image im = load_image_color(input,0,0);
+        image im = load_image_color(input,0,0);
         image sized = letterbox_image(im, net->w, net->h);
         //image sized = resize_image(im, net->w, net->h);
         //image sized2 = resize_max(im, net->w);
@@ -615,10 +741,10 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         }
 
         float *X = sized.data;
-		gettimeofday(&start, 0);
-		network_predict(net, X);
-		gettimeofday(&stop, 0);
-		printf("%s: Predicted in %ld ms.\n", input, (stop.tv_sec * 1000 + stop.tv_usec / 1000) - (start.tv_sec * 1000 + start.tv_usec / 1000));
+        gettimeofday(&start, 0);
+        network_predict(net, X);
+        gettimeofday(&stop, 0);
+        printf("%s: Predicted in %ld ms.\n", input, (stop.tv_sec * 1000 + stop.tv_usec / 1000) - (start.tv_sec * 1000 + start.tv_usec / 1000));
         get_region_boxes(l, im.w, im.h, net->w, net->h, thresh, probs, boxes, masks, 0, 0, hier_thresh, 1);
         //if (nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
         if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);
@@ -645,6 +771,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         free_ptrs((void **)probs, l.w*l.h*l.n);
         if (filename) break;
     }
+    
 #ifdef NNPACK
 	pthreadpool_destroy(net->threadpool);
 	nnp_deinitialize();
@@ -699,6 +826,7 @@ void run_detector(int argc, char **argv)
     char *filename = (argc > 6) ? argv[6]: 0;
 
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
+    else if(0==strcmp(argv[2], "daemon")) daemon_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
