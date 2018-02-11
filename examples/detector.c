@@ -646,11 +646,12 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filen
         //if (nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
         if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);
 
-
-        for(int i = 0; i <  l.w*l.h*l.n; ++i){
+        int i = 0;
+        for(i = 0; i <  l.w*l.h*l.n; ++i){
             char labelstr[4096] = {0};
             int class = -1;
-            for(int j = 0; j < l.classes; ++j){
+            int j = 0;
+            for(j = 0; j < l.classes; ++j){
                 if (probs[i][j] > thresh){
                     if (class < 0) {
                         strcat(labelstr, names[j]);
@@ -826,7 +827,7 @@ void run_detector(int argc, char **argv)
     char *filename = (argc > 6) ? argv[6]: 0;
 
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
-    else if(0==strcmp(argv[2], "daemon")) daemon_detector(datacfg, cfg, weights, gpus, ngpus, clear);
+    else if(0==strcmp(argv[2], "daemon")) daemon_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
