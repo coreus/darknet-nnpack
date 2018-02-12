@@ -567,9 +567,8 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
     char buffer[1024];
     int listen_fd, comm_fd;
     struct sockaddr_in servaddr;
-    char filename[256];
+    char filename[256] = "/tmp/camera.jpg";
 
-    filename = "/tmp/camera.jpg";
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     bzero( &servaddr, sizeof(servaddr));
@@ -615,7 +614,7 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
             fwrite(buffer, sizeof(buffer), 1, fp);
         }
         fclose(fp);
-        
+
         if(strcmp(buffer,"exit") == 0){
         break;
         }
