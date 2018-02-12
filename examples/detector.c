@@ -607,7 +607,7 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filen
         char result[4096] = {0};
         bzero( buffer, 1024);
         
-        fp = fopen("/tmp/camera.jpg","wb+")        
+        fp = fopen("/tmp/camera.jpg","wb+");
         while ((n = read(comm_fd, buffer, 1024)) > 0)
         {
             fwrite(buffer, sizeof(buffer), 1, fp);
