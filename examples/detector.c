@@ -562,12 +562,14 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
     }
 }
 
-void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh, char *outfile, int fullscreen)
+void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thresh, float hier_thresh, char *outfile, int fullscreen)
 {
     char buffer[1024];
     int listen_fd, comm_fd;
     struct sockaddr_in servaddr;
+    char filename[256];
 
+    filename = "/tmp/camera.jpg";
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     bzero( &servaddr, sizeof(servaddr));
@@ -607,17 +609,17 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filen
         char result[4096] = {0};
         bzero( buffer, 1024);
         
-        fp = fopen("/tmp/camera.jpg","wb+");
+        fp = fopen(filename,"wb+");
         while ((n = read(comm_fd, buffer, 1024)) > 0)
         {
             fwrite(buffer, sizeof(buffer), 1, fp);
         }
         fclose(fp);
-        if(strcmp(str,"exit") == 0){
+        
+        if(strcmp(buffer,"exit") == 0){
         break;
         }
 
-        filename = "/tmp/camera.jpg";
         strncpy(input, filename, 256);
         
 #ifdef NNPACK
@@ -832,7 +834,7 @@ void run_detector(int argc, char **argv)
     char *filename = (argc > 6) ? argv[6]: 0;
 
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
-    else if(0==strcmp(argv[2], "daemon")) daemon_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
+    else if(0==strcmp(argv[2], "daemon")) daemon_detector(datacfg, cfg, weights, thresh, hier_thresh, outfile, fullscreen);
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
