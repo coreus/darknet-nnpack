@@ -564,9 +564,8 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
 
 void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh, char *outfile, int fullscreen)
 {
-    char str[256];
+    char buffer[1024];
     int listen_fd, comm_fd;
-
     struct sockaddr_in servaddr;
 
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -578,7 +577,7 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filen
     servaddr.sin_port = htons(22666);
 
     bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
-    listen(listen_fd, 256);
+    listen(listen_fd, 1024);
 
     comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
     
@@ -603,16 +602,22 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, char *filen
 
     while(1)
     {
-
+        int n;
+        FILE *fp;
         char result[4096] = {0};
-        bzero( str, 256);
-        read(comm_fd,str,256);
-
+        bzero( buffer, 1024);
+        
+        fp = fopen("/tmp/camera.jpg","wb+")        
+        while ((n = read(comm_fd, buffer, 1024)) > 0)
+        {
+            fwrite(buffer, sizeof(buffer), 1, fp);
+        }
+        fclose(fp);
         if(strcmp(str,"exit") == 0){
         break;
         }
 
-        filename = str;
+        filename = "/tmp/camera.jpg";
         strncpy(input, filename, 256);
         
 #ifdef NNPACK
