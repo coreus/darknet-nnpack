@@ -569,19 +569,6 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
     struct sockaddr_in servaddr;
     char filename[256] = "/tmp/camera.jpg";
 
-    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-
-    bzero( &servaddr, sizeof(servaddr));
-
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-    servaddr.sin_port = htons(22666);
-
-    bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
-    listen(listen_fd, 1024);
-
-    comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
-    
     list *options = read_data_cfg(datacfg);
     char *name_list = option_find_str(options, "names", "data/names.list");
     char **names = get_labels(name_list);
@@ -601,19 +588,39 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
 #endif
 
 
+    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    bzero( &servaddr, sizeof(servaddr));
+
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+    servaddr.sin_port = htons(22666);
+
+    bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+    listen(listen_fd, 1024);
+
+
     while(1)
     {
         int n;
         FILE *fp;
         char result[4096] = {0};
         bzero( buffer, 1024);
-        
+	printf("open file\n");
+	printf("wait image\n");
+	fflush(stdout);
+
+	comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
+
         fp = fopen(filename,"wb+");
         while ((n = read(comm_fd, buffer, 1024)) > 0)
         {
-            fwrite(buffer, sizeof(buffer), 1, fp);
+            fwrite(buffer, n, 1, fp);
         }
         fclose(fp);
+
+	printf("image received\n");
+        fflush(stdout);
 
         if(strcmp(buffer,"exit") == 0){
         break;
@@ -686,7 +693,7 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
         free_image(sized);
         free(boxes);
         free_ptrs((void **)probs, l.w*l.h*l.n);
-        
+        printf(result);
         write(comm_fd, result, strlen(result)+1);
     }
 #ifdef NNPACK
