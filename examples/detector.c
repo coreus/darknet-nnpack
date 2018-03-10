@@ -577,11 +577,15 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
     network *net = load_network(cfgfile, weightfile, 0);
     set_batch_network(net, 1);
     srand(2222222);
-	struct timeval start, stop;
+    struct timeval start, stop;
     char buff[256];
     char *input = buff;
     int j;
     float nms=.3;
+
+    struct timeval nTimeout;
+    nTimeout.tv_sec = 0;
+    nTimeout.tv_usec = 100000;
 #ifdef NNPACK
 	nnp_initialize();
 	net->threadpool = pthreadpool_create(4);
@@ -605,7 +609,7 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
         int n;
         FILE *fp;
         char result[4096] = {0};
-        bzero( buffer, 1024);
+        bzero( buffer, sizeof(buffer));
 	printf("open file\n");
 	printf("wait image\n");
 	fflush(stdout);
@@ -613,18 +617,15 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
 	comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
 
         fp = fopen(filename,"wb+");
-        while ((n = read(comm_fd, buffer, 1024)) > 0)
+        while ((n = read(comm_fd, buffer, sizeof(buffer))) > 0)
         {
             fwrite(buffer, n, 1, fp);
+	    setsockopt(comm_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&nTimeout, sizeof(nTimeout));
         }
         fclose(fp);
 
 	printf("image received\n");
         fflush(stdout);
-
-        if(strcmp(buffer,"exit") == 0){
-        break;
-        }
 
         strncpy(input, filename, 256);
         
@@ -694,7 +695,7 @@ void daemon_detector(char *datacfg, char *cfgfile, char *weightfile, float thres
         free(boxes);
         free_ptrs((void **)probs, l.w*l.h*l.n);
         printf(result);
-        write(comm_fd, result, strlen(result)+1);
+        write(comm_fd, result, strlen(result));
     }
 #ifdef NNPACK
 	pthreadpool_destroy(net->threadpool);
